@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Морський бій із Firebase</title>
+<title>Морський бій з Firebase</title>
 <style>
   body {
     font-family: Arial, sans-serif;
@@ -88,6 +88,7 @@
     justify-content: center;
     cursor: pointer;
     user-select: none;
+    line-height: 26px;
   }
   .orient-icon.selected {
     box-shadow: 0 0 8px #339;
@@ -112,7 +113,7 @@
     flex-shrink: 0;
   }
   #playerBoardContainer strong, #enemyBoardContainer strong {
-    margin-bottom: 8px;
+    margin-bottom: 5px;
   }
   .board {
     display: grid;
@@ -130,6 +131,9 @@
     border: 1px solid #339;
     cursor: pointer;
     position: relative;
+  }
+  #enemyBoard .cell {
+    background: #e9f3e9;
   }
   .cell.ship {
     background: #375aab;
@@ -201,7 +205,7 @@
     </div>
     <button id="startGameBtn" disabled>Почати гру</button>
   </div>
-  <div id="statusBox">Очікуйте...</div>
+  <div id="statusBox">Чекайте...</div>
   <div id="boardsAndStatus">
     <div id="playerBoardContainer">
       <strong>Ваша дошка</strong>
@@ -210,7 +214,7 @@
     <div id="enemyBoardContainer">
       <strong>Дошка супротивника</strong>
       <div id="enemyBoard" class="board"></div>
-   div>
+    </div>
   </div>
 </div>
 
@@ -232,38 +236,33 @@ const db = firebase.database();
 const BOARD_SIZE=10;
 const shipsConfig = {4:1,3:2,2:3,1:4};
 
-let roomId=null;
-let playerNumber=null;
-let currentPlayer=null;
-let gameStarted=false;
-let placedShips=[];
-let enemyShips=[];
-let playerMoves=[];
-let enemyMoves=[];
+let roomId, playerNumber, currentPlayer, gameStarted=false;
+let placedShips = [], enemyShips = [];
+let orientation = "horizontal";
+let selectedSize = 4;
+let playerMoves = [], enemyMoves = [];
 
-let orientation="horizontal";
-let selectedSize=4;
+const playerBoard = document.getElementById("playerBoard");
+const enemyBoard = document.getElementById("enemyBoard");
+const roomStatusBox = document.getElementById("roomStatusBox");
+const roomIdInput = document.getElementById("roomIdInput");
+const createRoomBtn = document.getElementById("createRoomBtn");
+const joinRoomBtn = document.getElementById("joinRoomBtn");
+const startGameBtn = document.getElementById("startGameBtn");
+const shipIconsContainer = document.getElementById("shipIconsContainer");
+const statusBox = document.getElementById("statusBox");
 
-const playerBoard=document.getElementById("playerBoard");
-const enemyBoard=document.getElementById("enemyBoard");
-const roomStatusBox=document.getElementById("roomStatusBox");
-const roomIdInput=document.getElementById("roomIdInput");
-const createRoomBtn=document.getElementById("createRoomBtn");
-const joinRoomBtn=document.getElementById("joinRoomBtn");
-const startGameBtn=document.getElementById("startGameBtn");
-const shipIconsContainer=document.getElementById("shipIconsContainer");
-const statusBox=document.getElementById("statusBox");
+function generateRoomId(){
+  return Math.floor(1000 + Math.random()*9000).toString();
+}
 
-// Создание иконок кораблей (вертикально)
 function createShipIcons(){
   shipIconsContainer.innerHTML="";
   for(let size in shipsConfig){
     size=+size;
     const wrapper=document.createElement("div");
     wrapper.className="ship-icon";
-    wrapper.style.cursor="pointer";
     if(size===selectedSize) wrapper.classList.add("selected");
-
     wrapper.dataset.size=size;
     for(let i=0; i<size; i++){
       const seg=document.createElement("div");
@@ -271,44 +270,53 @@ function createShipIcons(){
       wrapper.appendChild(seg);
     }
     shipIconsContainer.appendChild(wrapper);
-
-    wrapper.addEventListener("click",()=>{
+    wrapper.onclick=()=> {
       if(gameStarted) return;
-      shipIconsContainer.querySelectorAll(".ship-icon").forEach(el=>el.classList.remove("selected"));
+      shipIconsContainer.querySelectorAll(".ship-icon").forEach(i=>i.classList.remove("selected"));
       wrapper.classList.add("selected");
       selectedSize=size;
-    });
+    }
   }
 }
 
 function updateCounts(){
-  // Можно добавить визуальный счетчик кораблей, если нужно
+  for(let size in shipsConfig){
+    size=+size;
+    const countDiv = document.getElementById(`count-${size}`);
+    if(!countDiv) continue;
+    countDiv.innerHTML="";
+    const placedCount = placedShips.filter(s=>s.size===size).length;
+    const remain = shipsConfig[size]-placedCount;
+    for(let i=0;i<remain;i++){
+      const block=document.createElement("div");
+      block.classList.add("count-block");
+      countDiv.appendChild(block);
+    }
+  }
 }
-// Создание досок
+
 function createBoard(board){
   board.innerHTML="";
   for(let i=0; i<BOARD_SIZE*BOARD_SIZE; i++){
-    let cell=document.createElement("div");
+    const cell=document.createElement("div");
     cell.classList.add("cell");
     cell.dataset.index=i;
     board.appendChild(cell);
   }
 }
-// Инициализация досок
 createBoard(playerBoard);
 createBoard(enemyBoard);
 
-// Проверка занятости клетки
 function isCellOccupied(idx, ships=placedShips){
-  return ships.some(ship=>ship.positions.includes(idx));
+  return ships.some(ship => ship.positions.includes(idx));
 }
 function hasNeighbouringShip(idx, ships=placedShips){
   const x=idx%BOARD_SIZE;
   const y=Math.floor(idx/BOARD_SIZE);
-  for(let dy=-1; dy<=1; dy++){
-    for(let dx=-1; dx<=1; dx++){
+  for(let dy=-1;dy<=1;dy++){
+    for(let dx=-1;dx<=1;dx++){
       if(dx===0 && dy===0) continue;
-      let nx=x+dx, ny=y+dy;
+      const nx=x+dx; const ny=y+dy;
       if(nx>=0 && nx<BOARD_SIZE && ny>=0 && ny<BOARD_SIZE){
         if(isCellOccupied(ny*BOARD_SIZE+nx, ships)) return true;
       }
@@ -321,25 +329,23 @@ function canPlaceShip(startIdx, size, orient, ships=placedShips){
   const y=Math.floor(startIdx/BOARD_SIZE);
   if(orient==="horizontal"){
     if(x+size>BOARD_SIZE) return false;
-    for(let i=0; i<size;i++){
-      if(isCellOccupied(y*BOARD_SIZE+x+i, ships)|| hasNeighbouringShip(y*BOARD_SIZE+x+i, ships)) return false;
+    for(let i=0;i<size;i++){
+      if(isCellOccupied(y*BOARD_SIZE+x+i, ships) || hasNeighbouringShip(y*BOARD_SIZE+x+i, ships)) return false;
     }
   } else {
     if(y+size>BOARD_SIZE) return false;
-    for(let i=0; i<size;i++){
-      if(isCellOccupied((y+i)*BOARD_SIZE+x, ships)|| hasNeighbouringShip((y+i)*BOARD_SIZE+x, ships)) return false;
+    for(let i=0;i<size;i++){
+      if(isCellOccupied((y+i)*BOARD_SIZE+x, ships) || hasNeighbouringShip((y+i)*BOARD_SIZE+x, ships)) return false;
     }
   }
   return true;
 }
-// Отрисовка кораблей игрока
 function drawShips(){
-  playerBoard.querySelectorAll(".cell.ship").forEach(c=> {
+  playerBoard.querySelectorAll(".cell.ship").forEach(c=>{
     c.classList.remove("ship");
     const btn=c.querySelector(".remove-ship");
-    if(btn)btn.remove();
+    if(btn) btn.remove();
   });
-
   placedShips.forEach((ship,index)=>{
     ship.positions.forEach(pos=>{
       const cell=playerBoard.querySelector(`.cell[data-index='${pos}']`);
@@ -351,14 +357,20 @@ function drawShips(){
           btn.textContent="×";
           btn.title="Видалити корабель";
           btn.style.position="absolute";
-          btn.style.top="3px"; btn.style.right="3px";
-          btn.style.width="18px"; btn.style.height="18px";
-          btn.style.fontSize="16px"; btn.style.background="#f44";
-          btn.style.color="white"; btn.style.borderRadius="3px";
-          btn.style.cursor="pointer"; btn.style.lineHeight="18px";
-          btn.style.textAlign="center"; btn.style.userSelect="none";
+          btn.style.top="2px";
+          btn.style.right="2px";
+          btn.style.width="22px";
+          btn.style.height="22px";
+          btn.style.fontSize="18px";
+          btn.style.background="#f44";
+          btn.style.color="white";
+          btn.style.borderRadius="4px";
+          btn.style.cursor="pointer";
+          btn.style.lineHeight="22px";
+          btn.style.textAlign="center";
+          btn.style.userSelect="none";
           btn.style.zIndex="10";
-          btn.onclick=(e)=>{
+          btn.onclick=e=>{
             e.stopPropagation();
             if(gameStarted) return;
             placedShips.splice(index,1);
@@ -371,205 +383,209 @@ function drawShips(){
     });
   });
 }
-// Размещение корабля по клику
 function placeShip(startIdx, size, orient){
-  if(gameStarted)return false;
-  const placedCount=placedShips.filter(s=>s.size===size).length;
-  if(placedCount>=shipsConfig[size]){
-    alert(`Максимальний розмір кораблів: ${shipsConfig[size]} шт.`);
+  if(gameStarted) return false;
+  const placedCount = placedShips.filter(s=>s.size===size).length;
+  if(placedCount >= shipsConfig[size]){
+    alert(`Максимум ${shipsConfig[size]} кораблів розміром ${size}`);
     return false;
   }
-  if(!canPlaceShip(startIdx,size,orient)){
-    alert("Корабель не можна розташувати сюди");
+  if(!canPlaceShip(startIdx, size, orient)){
+    alert("Корабель не поміщається або стикається з іншими");
     return false;
   }
-  let positions=[];
-  const x=startIdx%BOARD_SIZE;
-  const y=Math.floor(startIdx/BOARD_SIZE);
-  for(let i=0;i<size;i++)
+  const x = startIdx % BOARD_SIZE;
+  const y = Math.floor(startIdx / BOARD_SIZE);
+  const positions = [];
+  for(let i=0; i<size; i++){
     positions.push(orient==="horizontal"?y*BOARD_SIZE+x+i:(y+i)*BOARD_SIZE+x);
-  placedShips.push({size,positions,hits:[]});
+  }
+  placedShips.push({size, positions, hits: []});
   drawShips();
   updateStartBtn();
   return true;
 }
-// Обновление кнопки старта
 function updateStartBtn(){
   for(let size in shipsConfig){
     size=+size;
-    const count=placedShips.filter(s=>s.size===size).length;
+    const count = placedShips.filter(s=>s.size===size).length;
     if(count<shipsConfig[size]){
-      info.textContent="Розставте кораблі!";
+      setStatus("Розставте всі кораблі");
       startGameBtn.disabled=true;
       return;
     }
   }
-  info.textContent="Всі кораблі на місці!";
-  startGameBtn.disabled=false;
+  setStatus("Усі кораблі розставлені");
+  startGameBtn.disabled = false;
 }
-// Работа с Firebase
+
+function setStatus(text){
+  statusBox.textContent=text;
+}
+
+// Firebase функции
 
 function saveShipsToDB(){
-  if(!roomId || !playerNumber) return;
-  const shipsKey=playerNumber===1?"player1Ships":"player2Ships";
-  const readyKey=playerNumber===1?"ready1":"ready2";
-  const shipsData=placedShips.map(s=>s.positions);
-  return db.ref(roomId).update({[shipsKey]:shipsData,[readyKey]:true});
+  if(!roomId || !playerNumber)return;
+  const shipsKey = playerNumber===1 ? "player1Ships":"player2Ships";
+  const readyKey = playerNumber===1 ? "ready1":"ready2";
+  const shipsData = placedShips.map(s=>s.positions);
+  return db.ref(roomId).update({
+    [shipsKey]:shipsData,
+    [readyKey]:true
+  });
 }
 
 function listenRoom(){
-  if(!roomId) return;
+  if(!roomId)return;
   db.ref(roomId).on("value",snapshot=>{
-    const data=snapshot.val();
+    const data = snapshot.val();
     if(!data)return;
     if(data.ready1 && data.ready2 && !gameStarted){
       gameStarted=true;
       currentPlayer=data.currentPlayer;
-      const enemyData=playerNumber===1?data.player2Ships:data.player1Ships;
-      if(enemyData) enemyShips=enemyData.map(arr => ({positions:arr, size:arr.length, hits:[]}));
-      playerMoves=data.moves?data.moves.filter(m=>m.player===playerNumber):[];
-      enemyMoves=data.moves?data.moves.filter(m=>m.player!==playerNumber):[];
+      const enemyData = playerNumber===1 ? data.player2Ships:data.player1Ships;
+      if(enemyData) enemyShips=enemyData.map(arr=>({positions:arr, size:arr.length, hits:[]}));
+      playerMoves = data.moves ? data.moves.filter(m=>m.player===playerNumber):[];
+      enemyMoves = data.moves ? data.moves.filter(m=>m.player!==playerNumber):[];
       drawShips();
       drawEnemyBoard();
       updatePlayerBoard();
       updateEnemyBoard();
       playerBoard.querySelectorAll(".remove-ship").forEach(el=>el.remove());
-      setStatus(currentPlayer===playerNumber?"Ваш хід":"Хід супротивника");
+      setStatus(currentPlayer === playerNumber ? "Ваш хід" : "Хід супротивника");
       startGameBtn.disabled=true;
     }
-    if(data && data.moves && data.moves.length>0){
-      playerMoves=data.moves.filter(m=>m.player===playerNumber);
-      enemyMoves=data.moves.filter(m=>m.player!==playerNumber);
+    if(data.moves && data.moves.length > 0){
+      playerMoves = data.moves.filter(m=>m.player===playerNumber);
+      enemyMoves = data.moves.filter(m=>m.player!==playerNumber);
       updatePlayerBoard();
       updateEnemyBoard();
-      currentPlayer=data.currentPlayer;
-      setStatus(currentPlayer===playerNumber?"Ваш хід":"Хід супротивника");
+      currentPlayer = data.currentPlayer;
+      setStatus(currentPlayer === playerNumber ? "Ваш хід" : "Хід супротивника");
       checkGameOver();
     }
   });
 }
 
-function setStatus(msg){
-  statusBox.textContent=msg;
-}
-
-// Проверка конца игры
-function checkGameOver(){
-  if(!placedShips.length || !enemyShips.length) return;
-  const lost=placedShips.every(ship=>ship.hits&&ship.hits.length===ship.size);
-  const enemyLost=enemyShips.every(ship=>ship.hits&&ship.hits.length===ship.size);
-  if(lost){
-    setStatus("Ви програли");
-    gameStarted=false;
-  } else if(enemyLost){
-    setStatus("Ви перемогли!");
-    gameStarted=false;
-  }
-}
-
 function updatePlayerBoard(){
-  playerBoard.querySelectorAll(".cell").forEach(cell=>{
-    cell.classList.remove("hit","miss","sunk");
-    const idx=+cell.dataset.index;
-    let hit=false, miss=false;
+  playerBoard.querySelectorAll('.cell').forEach(cell=>{
+    cell.classList.remove('hit','miss','sunk');
+    const idx = +cell.dataset.index;
+    let hit = false;
+    let miss = false;
     if(enemyMoves){
       const shot=enemyMoves.find(m=>m.position===idx);
       if(shot){
-        if(isCellOccupied(idx, placedShips)){
+        if(isCellOccupied(idx,placedShips)){
           hit=true;
           markShipHit(placedShips, idx, playerBoard);
         } else miss=true;
       }
     }
-    if(hit) cell.classList.add("hit");
-    else if(miss) cell.classList.add("miss");
+    if(hit) cell.classList.add('hit');
+    if(miss) cell.classList.add('miss');
   });
 }
 
 function updateEnemyBoard(){
-  enemyBoard.querySelectorAll(".cell").forEach(cell=>{
-    cell.classList.remove("hit","miss","sunk");
-    const idx=+cell.dataset.index;
-    let hit=false, miss=false;
+  enemyBoard.querySelectorAll('.cell').forEach(cell=>{
+    cell.classList.remove('hit','miss','sunk');
+    const idx = +cell.dataset.index;
+    let hit = false;
+    let miss = false;
     if(playerMoves){
-      const shot=playerMoves.find(m=>m.position===idx);
+      const shot = playerMoves.find(m=>m.position===idx);
       if(shot){
-        if(isCellOccupied(idx, enemyShips)){
+        if(isCellOccupied(idx,enemyShips)){
           hit=true;
           markShipHit(enemyShips, idx, enemyBoard);
         } else miss=true;
       }
     }
-    if(hit) cell.classList.add("hit");
-    else if(miss) cell.classList.add("miss");
+    if(hit) cell.classList.add('hit');
+    if(miss) cell.classList.add('miss');
   });
 }
 
 function markShipHit(ships, idx, board){
-  const ship=ships.find(s=>s.positions.includes(idx));
+  let ship = ships.find(s=>s.positions.includes(idx));
   if(!ship) return;
   if(!ship.hits) ship.hits=[];
   if(!ship.hits.includes(idx)) ship.hits.push(idx);
-  if(ship.hits.length===ship.size){
-    ship.positions.forEach(pos=>{
-      const cell=board.querySelector(`.cell[data-index="${pos}"]`);
-      if(cell) cell.classList.add("sunk");
+  if(ship.hits.length === ship.size){
+    ship.positions.forEach(p=>{
+      const cell=board.querySelector(`.cell[data-index='${p}']`);
+      if(cell) cell.classList.add('sunk');
     });
   }
 }
 
 function drawEnemyBoard(){
-  enemyBoard.querySelectorAll(".cell").forEach(c=>{
-    c.classList.remove("hit","miss","sunk");
-    c.style.cursor="pointer";
-    c.style.boxShadow="";
+  enemyBoard.querySelectorAll('.cell').forEach(c=>{
+    c.classList.remove('hit','miss','sunk');
+    c.style.cursor='pointer';
+    c.style.boxShadow='';
   });
 }
 
 async function makeMove(position){
   if(currentPlayer!==playerNumber) return false;
   try{
-    const movesRef=db.ref(roomId+"/moves");
-    const snapshot=await movesRef.once("value");
-    let moves=snapshot.val()||[];
-    if(moves.find(m=>m.position===position)) return false; // Если уже был ход в эту клетку
-    moves.push({player:playerNumber,position});
+    const movesRef=db.ref(roomId+'/moves');
+    const snapshot=await movesRef.once('value');
+    let moves=snapshot.val() || [];
+    if(moves.find(m=>m.position===position)) return false; // уже стрелял сюда
+    moves.push({player: playerNumber, position});
     await db.ref(roomId).update({
-      moves:moves,
-      currentPlayer:playerNumber===1?2:1
+      moves: moves,
+      currentPlayer: playerNumber === 1 ? 2 : 1
     });
     return true;
-  } catch(e){
+  }catch(e){
     console.error(e);
     return false;
   }
 }
 
-playerBoard.addEventListener("click",e=>{
-  if(!e.target.classList.contains("cell"))return;
+function checkGameOver(){
+  if(!placedShips.length || !enemyShips.length) return;
+  const lost=placedShips.every(ship=>ship.hits && ship.hits.length===ship.size);
+  const enemyLost=enemyShips.every(ship=>ship.hits && ship.hits.length===ship.size);
+  if(lost){
+    setStatus('Ви програли');
+    gameStarted=false;
+  }else if(enemyLost){
+    setStatus('Ви перемогли!');
+    gameStarted=false;
+  }
+}
+
+playerBoard.addEventListener('click', e=>{
+  if(!e.target.classList.contains('cell')) return;
   placeShip(+e.target.dataset.index, selectedSize, orientation);
 });
 
-enemyBoard.addEventListener("click", async e=>{
-  if(!gameStarted)return;
-  if(currentPlayer!==playerNumber){
-    setStatus("Чекайте хід супротивника");
+enemyBoard.addEventListener('click', async e=>{
+  if(!gameStarted) return;
+  if(currentPlayer !== playerNumber){
+    setStatus('Чекайте хід супротивника');
     return;
   }
-  if(!e.target.classList.contains("cell"))return;
+  if(!e.target.classList.contains('cell')) return;
   const idx=+e.target.dataset.index;
-  if(e.target.classList.contains("hit")||e.target.classList.contains("miss")){
-    setStatus("Ви вже стріляли сюди");
+  if(e.target.classList.contains('hit') || e.target.classList.contains('miss')){
+    setStatus('Ви вже стріляли сюди');
     return;
   }
-  const res=await makeMove(idx);
-  if(res)setStatus("Хід зроблено, чекайте суперника");
+  const res = await makeMove(idx);
+  if(res) setStatus('Хід зроблено, чекайте супротивника');
 });
 
-createRoomBtn.addEventListener("click",()=>{
-  roomId=generateRoomId();
-  roomIdInput.value=roomId;
-  playerNumber=1;
+createRoomBtn.addEventListener('click', ()=>{
+  roomId = generateRoomId();
+  roomIdInput.value = roomId;
+  playerNumber = 1;
   db.ref(roomId).set({
     player1Ships:null,
     player2Ships:null,
@@ -578,48 +594,49 @@ createRoomBtn.addEventListener("click",()=>{
     ready1:false,
     ready2:false
   }).then(()=>{
-    roomStatusBox.textContent=`Гру створено - Онлайн ${playerNumber}`;
-    info.textContent="Розставте кораблі та чекайте супротивника";
+    roomStatusBox.textContent = `Гру створено - Онлайн ${playerNumber}`;
+    setStatus('Розставте кораблі, чекайте супротивника');
     listenRoom();
   });
 });
 
-joinRoomBtn.addEventListener("click",()=>{
-  const id=roomIdInput.value.trim();
+joinRoomBtn.addEventListener('click', ()=>{
+  const id = roomIdInput.value.trim();
   if(!/^\d{4}$/.test(id)){
-    alert("Введіть 4-значний ID кімнати");
+    alert('Введіть коректний ID кімнати із 4 цифр');
     return;
   }
-  db.ref(id).once("value").then(snapshot=>{
+  db.ref(id).once('value').then(snapshot=>{
     if(!snapshot.exists()){
-      alert("Кімната не знайдена");
+      alert('Кімната не знайдена');
       return;
     }
-    roomId=id;
-    playerNumber=2;
-    roomStatusBox.textContent=`Гру створено - Онлайн ${playerNumber}`;
-    info.textContent="Розставте кораблі та чекайте початку гри";
+    roomId = id;
+    playerNumber = 2;
+    roomStatusBox.textContent = `Гру створено - Онлайн ${playerNumber}`;
+    setStatus('Розставте кораблі, чекайте початку гри');
     listenRoom();
   });
 });
 
-startGameBtn.addEventListener("click",()=>{
+startGameBtn.addEventListener('click', ()=>{
   if(!roomId || !playerNumber){
-    alert("Створіть або приєднайтесь до кімнати");
+    alert('Створіть або приєднайтесь до кімнати');
     return;
   }
-  if(placedShips.length===0){
-    alert("Розставте кораблі");
+  if(placedShips.length === 0){
+    alert('Розставте кораблі');
     return;
   }
   saveShipsToDB();
-  info.textContent="Чекаємо супротивника...";
+  setStatus('Очікуємо супротивника...');
 });
 
-// Инициал
+// Ініціалізація
 createShipIcons();
 updateCounts();
 updateStartBtn();
+
 </script>
 </body>
 </html>
