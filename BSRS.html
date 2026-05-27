@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Морской бой онлайн</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 10px; }
+  h2 { text-align: center; }
+  .board { display: grid; grid-template-columns: repeat(10, 30px); grid-gap: 2px; margin-bottom: 20px;}
+  .cell { width: 30px; height: 30px; background: #cce; border: 1px solid #339; cursor: pointer; }
+  .cell.ship { background: #559; }
+  .cell.hit { background: red; }
+  .cell.miss { background: #eef; }
+  #info { margin-bottom: 10px; }
+  button { margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<h2>Морской бой онлайн</h2>
+<div id="info">Расставь корабли на своей доске (5 кораблей)</div>
+
+<div>
+  <strong>Своя доска</strong>
+  <div id="playerBoard" class="board"></div>
+</div>
+
+<div>
+  <strong>Доска соперника</strong>
+  <div id="enemyBoard" class="board"></div>
+</div>
+
+<button id="startGameBtn" disabled>Начать игру</button>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+// Вставь сюда свою конфигурацию Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyBxnuqouCK3Sf9tQnSeEimQhrEX8VNCB8A",
+  authDomain: "battleship-1-rs.firebaseapp.com",
+  databaseURL: "https://battleship-1-rs-default-rtdb.firebaseio.com",
+  projectId: "battleship-1-rs",
+  storageBucket: "battleship-1-rs.firebasestorage.app",
+  messagingSenderId: "192700040865",
+  appId: "1:192700040865:web:71466b4478d30a0924d2e0"
+};
+
+const app = initializeApp(firebaseConfig);
+const database = getDatabase(app);
+
+const playerBoard = document.getElementById('playerBoard');
+const enemyBoard = document.getElementById('enemyBoard');
+const info = document.getElementById('info');
+const startGameBtn = document.getElementById('startGameBtn');
+
+// Размер доски 10x10
+const BOARD_SIZE = 10;
+// Количество кораблей (упрощенный вариант: все одиночные)
+const SHIP_COUNT = 5;
+
+let playerShips = new Set();
+let enemyShips = new Set();
+let playerShots = new Set();
+let enemyShots = new();
+
+let isMyTurn = false;
+let gameStarted = false;
+
+let roomId = location.hash.slice(1);
+if (!roomId) {
+  // Если нет комнаты — создаем случайную и обновляем URL
+  roomId = Math.random().toString().substr(2, 6);
+  location.hash = roomId;
+  info.textContent = `Создана комната: ${roomId}. Ждите второго игрока.`;
+} else {
+  info.textContent = `Подключение к комнате: ${roomId}`;
+}
+
+const roomRef = ref(database, 'rooms/' + roomId);
+
+function createBoard(boardElement, clickHandler) {
+  boardElement.innerHTML = '';
+  for(let i=0; i<BOARD_SIZE*BOARD_SIZE; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.dataset.index = i;
+    if (clickHandler) cell.addEventListener('click', clickHandler);
+    boardElement.appendChild(cell);
+  }
+}
+
+function setCellClass(boardElement, index, className, add=true) {
+  const cell = boardElement.querySelector(`.cell[data-index='${index}']`);
+  if (!cell) return;
+  if (add) cell.classList.add(className);
+  else cell.classList.remove(className);
+}
+
+// Создаем доски
+createBoard(playerBoard, onPlayerBoardClick);
+createBoard(enemyBoard, onEnemyBoardClick);
+
+// Игроки в комнате — для определения, кто 1-й, кто 2-й
+let playersInRoom = [];
+let playerNumber = null; // 0 или 1
+
+// Подключаемся к комнате в Firebase
+function joinRoom() {
+  onValue(roomRef.child('players'), (snapshot) => {
+    const players = snapshot.val() || [];
+    playersInRoom = players;
+
+    if (players.length < 2) {
+      if (!players.includes(navigator.userAgent)) {
+        players.push(navigator.userAgent);
+        set(roomRef.child('players'), players);
+      }
+    }
+
+    playerNumber = players.indexOf(navigator.userAgent);
+    if (playerNumber === -1) {
+      playerNumber = players.length - 1;
+    }
+
+    if (players.length === 2) {
+      info.textContent = 'В комнате 2 игрока. Расставляйте корабли и нажмите "Начать игру".';
+      startGameBtn.disabled = false;
+    } else {
+      info.textContent = `Ждем второго игрока в комнате ${roomId}...`;
+      startGameBtn.disabled = true;
+    }
+
+    loadGameState();
+  });
+}
+
+// Загружаем состояние игры из Firebase
+function loadGameState() {
+  onValue(roomRef.child('gameState'), (snapshot) => {
+    const state = snapshot.val();
+    if (!state) return;
+
+    if (state.playerShips && state.playerShips[playerNumber]) {
+      playerShips = new Set(state.playerShips[playerNumber]);
+      drawShips(playerBoard, playerShips);
+    }
+
+    if (state.enemyShips && state.enemyShips[1 - playerNumber]) {
+      enemyShips = new Set(state.enemyShips[1 - playerNumber]);
+    }
+
+    if (state.playerShots && state.playerShots[playerNumber]) {
+      playerShots = new Set(state.playerShots[playerNumber]);
+      drawShots(enemyBoard, playerShots);
+    }
+
+    if (state.enemyShots && state.enemyShots[1 - playerNumber]) {
+      enemyShots = new Set(state.enemyShots[1 - playerNumber]);
+      drawShots(playerBoard, enemyShots);
+    }
+
+    if (state.turn !== undefined) {
+      isMyTurn = (state.turn === playerNumber);
+      if (gameStarted) updateTurnInfo();
+    }
+  });
+}
+
+function drawShips(board, shipsSet) {
+  // Сначала убираем все ship классы
+  board.querySelectorAll('.cell.ship').forEach(c => c.classList.remove('ship'));
+  shipsSet.forEach(i => setCellClass(board, i, 'ship'));
+}
+
+function drawShots(board, shotsSet) {
+  board.querySelectorAll('.cell.hit, .cell.miss').forEach(c => {
+    c.classList.remove('hit');
+    c.classList.remove('miss');
+  });
+  shotsSet.forEach(i => {
+    // Попадание если там есть корабль соперника, иначе промах
+    if ((board === playerBoard && enemyShips.has(i)) || (board === enemyBoard && playerShips.has(i))) {
+      setCellClass(board, i, 'hit');
+    } else {
+      setCellClass(board, i, 'miss');
+    }
+  });
+}
+
+// Нажатия на свою доску - расстановка кораблей
+function onPlayerBoardClick(e) {
+  if (gameStarted) return;
+  const idx = +e.target.dataset.index;
+  if (playerShips.has(idx)) {
+    playerShips.delete(idx);
+    setCellClass(playerBoard, idx, 'ship', false);
+  } else {
+    if (playerShips.size < SHIP_COUNT) {
+      playerShips.add(idx);
+      setCellClass(playerBoard, idx, 'ship', true);
+    } else {
+      alert(`Максимум ${SHIP_COUNT} кораблей!`);
+    }
+  }
+  updateGameState();
+}
+
+// Нажатия по доске соперника - выстрелы
+function onEnemyBoardClick(e) {
+  if (!gameStarted || !isMyTurn) return;
+  const idx = +e.target.dataset.index;
+
+  // Проверяем, не стрелял ли уже сюда
+  if (playerShots.has(idx)) {
+    alert('Вы сюда уже стреляли');
+    return;
+  }
+
+  // Отмечаем выстрел
+  playerShots.add(idx);
+  updateGameState();
+
+  // Ход переходит сопернику
+  isMyTurn = false;
+  updateTurnInfo();
+}
+
+// Кнопка старт игры
+startGameBtn.addEventListener('click', () => {
+  if (playerShips.size !== SHIP_COUNT) {
+    alert(`Нужно разместить ровно ${SHIP_COUNT} кораблей.`);
+    return;
+  }
+  gameStarted = true;
+  if (!isMyTurn) {
+    isMyTurn = (playerNumber === 0); // Ходит первый игрок
+  }
+  info.textContent = `Игра началась! ${isMyTurn ? 'Ваш ход' : 'Ход соперника'}`;
+  updateGameState();
+  startGameBtn.disabled = true;
+});
+
+// Обновляем инфо о ходе
+function updateTurnInfo() {
+  info.textContent = gameStarted ? (isMyTurn ? 'Ваш ход' : 'Ход соперника') : info.textContent;
+}
+
+// Обновляем состояние в базе Firebase
+function updateGameState() {
+  const gameState = {
+    playerShips: {},
+    enemyShips: {},
+    playerShots: {},
+    enemyShots: {},
+    turn: null,
+  };
+
+  // Загружаем предыдущее состояние чтобы не затирать другие данные
+  roomRef.child('gameState').get().then(snapshot => {
+    const previous = snapshot.val() || {};
+
+    gameState.playerShips = previous.playerShips || {};
+    gameState.enemyShips = previous.enemyShips || {};
+    gameState.playerShots = previous.playerShots || {};
+    gameState.enemyShots = previous.enemyShots || {};
+    gameState.turn = previous.turn !== undefined ? previous.turn : 0;
+
+    // Обновляем свои данные
+    gameState.playerShips[playerNumber] = Array.from(playerShips);
+    gameState.enemyShips[1 - playerNumber] = Array.from(enemyShips);
+    gameState.playerShots[playerNumber] = Array.from(playerShots);
+    gameState.enemyShots[1 - playerNumber] = Array.from(enemyShots);
+
+    // Если игра началась и ходит другой игрок, переключаем ход
+    if (gameStarted) {
+      if (!isMyTurn) {
+        gameState.turn = 1 - playerNumber;
+      } else {
+        gameState.turn = playerNumber;
+      }
+    }
+
+    set(roomRef.child('gameState'), gameState);
+  });
+}
+
+// Загрузка предыдущего состояния и подключение к комнате
+joinRoom();
+
+</script>
+
+</body>
+</html>
