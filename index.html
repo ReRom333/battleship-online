@@ -3,127 +3,557 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Морской бой онлайн упрощённый</title>
+<title>Морской бой с ходами по очереди</title>
 <style>
   body {
-    font-family: Arial, sans-serif; max-width: 700px; margin: auto; padding: 10px;
+    font-family: Arial, sans-serif;
+    max-width: 700px;
+    margin: auto;
+    padding: 10px;
   }
-  #playerBoard, #enemyBoard {
-    display: grid; grid-template-columns: repeat(10, 30px); grid-gap: 2px; margin: 10px auto; width: 308px;
+  h2 {
+    text-align: center;
+  }
+  #boards {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 15px;
+  }
+  #playerBoardContainer, #enemyBoardContainer {
+    width: 48%;
+    text-align: center;
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(10, 30px);
+    grid-gap: 2px;
+    margin-top: 5px;
+    position: relative;
   }
   .cell {
-    width: 30px; height: 30px; background: #cce; border: 1px solid #339; cursor: pointer; user-select: none;
+    width: 30px;
+    height: 30px;
+    background: #cce;
+    border: 1px solid #339;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
   }
   .cell.ship {
     background: #559;
   }
   .cell.hit {
-    background: red;
+    background: #f35;
   }
   .cell.miss {
-    background: #eef;
+    background: #58a;
+  }
+  #info {
+    text-align: center;
+    margin-bottom: 15px;
+    min-height: 24px;
+  }
+  #shipIconsContainer {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-bottom: 15px;
+  }
+  .ship-icon {
+    cursor: pointer;
+    border: 2px solid transparent;
+    user-select: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #559;
+    color: white;
+    font-weight: bold;
+    border-radius: 6px;
+    position: relative;
+    height: 30px;
+  }
+  .ship-icon.selected {
+    border-color: #33a;
+    box-shadow: 0 0 8px #33a;
+  }
+  .ship-segment {
+    height: 30px;
+    border-right: 1px solid rgba(255,255,255,0.7);
+  }
+  .ship-segment:last-child {
+    border-right: none;
+  }
+  .count-icons {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    margin-top: 5px;
+  }
+  .count-block {
+    width: 13px;
+    height: 13px;
+    background: #aad;
+    border: 1px solid #44a;
+    border-radius: 3px;
+  }
+  #orientationIcons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 15px;
+  }
+  .orient-icon {
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    background: #cce;
+    color: #339;
+    font-weight: bold;
+    font-size: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    user-select: none;
+  }
+  .orient-icon.selected {
+    border-color: #33a;
+    box-shadow: 0 0 8px #33a;
+  }
+  .orient-icon.orient-horizontal::after {
+    content: "⇆";
+  }
+  .orient-icon.orient-vertical::after {
+    content: "⇅";
+  }
+  /* Кнопка удаления — теперь всегда видна и крупнее */
+  .cell.ship .remove-ship {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 22px;
+    height: 22px;
+    font-size: 18px;
+    background: #f44;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 22px;
+    text-align: center;
+    display: block;
+    user-select: none;
+    z-index: 10;
   }
 </style>
 </head>
 <body>
 
-<h2>Морской бой онлайн (упрощённый)</h2>
-<div id="info">Загрузка комнаты...</div>
+<h2>Морской бой с ходами по очереди</h2>
 
-<div>
-  <strong>Ваша доска</strong>
-  <div id="playerBoard"></div>
+<div id="info">Выберите корабль, ориентацию и ставьте корабли на доске</div>
+
+<div id="shipIconsContainer"></div>
+
+<div id="orientationIcons">
+  <div class="orient-icon orient-horizontal selected" data-orient="horizontal"></div>
+  <div class="orient-icon orient-vertical" data-orient="vertical"></div>
 </div>
 
-<div>
-  <strong>Доска соперника</strong>
-  <div id="enemyBoard"></div>
+<div id="boards">
+  <div id="playerBoardContainer">
+    <strong>Своя доска</strong>
+    <div id="playerBoard" class="board"></div>
+  </div>
+  <div id="enemyBoardContainer">
+    <strong>Доска соперника</strong>
+    <div id="enemyBoard" class="board"></div>
+  </div>
 </div>
 
-<button id="startBtn" disabled>Начать игру</button>
+<div style="text-align: center; margin-top: 15px;">
+  <button id="startGameBtn" disabled>Начать игру</button>
+</div>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
-  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
-
-  // Вставь сюда настройки из Firebase
-  const firebaseConfig = {
-    apiKey: "ВАШ_API_KEY",
-    authDomain: "ВАШ_ДОМЕН.firebaseapp.com",
-    databaseURL: "ВАШ_URL_DATABSE",
-    projectId: "ВАШ_PROJECT_ID",
-    storageBucket: "ВАШ_STORAGE_BUCKET",
-    messagingSenderId: "ВАШ_SENDER_ID",
-    appId: "ВАШ_APP_ID"
+<script>
+  const BOARD_SIZE = 10;
+  const shipsConfig = {
+    4: { count: 1    3: { count: 2 },
+    2: { count: 3 },
+    1: { count: 4 }
   };
 
-  const app = initializeApp(firebaseConfig);
-  const database = getDatabase(app);
+  let placedShips = [];
+  let selectedSize = 4;
+  let orientation = 'horizontal';
+  let gameStarted = false;
+  let currentPlayer = 'player'; // 'player' или 'enemy'
+  let enemyShips = [];
 
   const playerBoard = document.getElementById('playerBoard');
   const enemyBoard = document.getElementById('enemyBoard');
   const info = document.getElementById('info');
-  const startBtn = document.getElementById('startBtn');
+  const startGameBtn = document.getElementById('startGameBtn');
+  const shipIconsContainer = document.getElementById('shipIconsContainer');
 
-  const BOARD_SIZE = 10;
-  let placedShips = [];
-  let playerShots = new Set();
-  let enemyShots = new Set();
+  function createShipIcons() {
+    shipIconsContainer.innerHTML = '';
+    for(let size in shipsConfig) {
+      size = +size;
 
-  // Создаем доски
-  function createBoard(board, clickable = false) {
+      const wrapper = document.createElement('div');
+      wrapper.style.display = 'flex';
+      wrapper.style.flexDirection = 'column';
+      wrapper.style.alignItems = 'center';
+      wrapper.style.cursor = 'pointer';
+
+      const icon = document.createElement('div');
+      icon.classList.add('ship-icon');
+      if(size === selectedSize) icon.classList.add('selected');
+      icon.dataset.size = size;
+      icon.style.width = (30 * size) + 'px';
+      icon.style.height = '30px';
+      icon.style.display = 'flex';
+
+      for(let i=0; i<size; i++) {
+        const seg = document.createElement('div');
+        seg.classList.add('ship-segment');
+        seg.style.flex = '1';
+        icon.appendChild(seg);
+      }
+
+      const countDiv = document.createElement('div');
+      countDiv.classList.add('count-icons');
+      countDiv.id = `count-${size}`;
+      countDiv.style.marginTop = '5px';
+
+      wrapper.appendChild(icon);
+      wrapper.appendChild(countDiv);
+
+      shipIconsContainer.appendChild(wrapper);
+
+      icon.addEventListener('click', () => {
+        if(gameStarted) return;
+        shipIconsContainer.querySelectorAll('.ship-icon').forEach(s => s.classList.remove('selected'));
+        icon.classList.add('selected');
+        selectedSize = size;
+      });
+    }
+  }
+
+  function updateCounts() {
+    for(let size in shipsConfig) {
+      size = +size;
+      const countDiv = document.getElementById(`count-${size}`);
+      if(!countDiv) continue;
+      countDiv.innerHTML = '';
+      const placedCount = placedShips.filter(s => s.size === size).length;
+      const remain = shipsConfig[size].count - placedCount;
+      for(let i=0; i<remain; i++) {
+        const block = document.createElement('div');
+        block.classList.add('count-block');
+        countDiv.appendChild(block);
+      }
+    }
+  }
+
+  function createBoard(board) {
     board.innerHTML = '';
-    for(let i=0; i<BOARD_SIZE*BOARD_SIZE; i++){
+    for(let i=0; i < BOARD_SIZE*BOARD_SIZE; i++) {
       const cell = document.createElement('div');
       cell.classList.add('cell');
       cell.dataset.index = i;
-      if(clickable) cell.style.cursor = 'pointer';
       board.appendChild(cell);
     }
   }
 
-  createBoard(playerBoard, true);
-  createBoard(enemyBoard, true);
+  createBoard(playerBoard);
+  createBoard(enemyBoard);
 
-  // Простая расстановка 5 однопалубных кораблей для примера
-  function placeDefaultShips() {
-    placedShips = [];
-    let count = 0;
-    while(count < 5) {
-      let pos = Math.floor(Math.random()*100);
-      if(!placedShips.includes(pos)) {
-        placedShips.push(pos);
-        count++;
+  function isCellOccupied(idx, ships=placedShips) {
+    return ships.some(ship => ship.positions.includes(idx));
+  }
+
+  function hasNeighbouringShip(idx) {
+    const x = idx % BOARD_SIZE;
+    const y = Math.floor(idx / BOARD_SIZE);
+    for(let dy = -1; dy <= 1; dy++) {
+      for(let dx = -1; dx <= 1; dx++) {
+        if(dx === 0 && dy === 0) continue;
+        const nx = x + dx;
+        const ny = y + dy;
+        if(nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE) {
+          const nidx = ny * BOARD_SIZE + nx;
+          if(isCellOccupied(nidx)) return true;
+        }
       }
     }
-    placedShips.forEach(pos => {
-      const cell = playerBoard.querySelector(`.cell[data-index='${pos}']`);
-      if(cell) cell.classList.add('ship');
+    return false;
+  }
+
+  function canPlaceShip(startIdx, size, orient, ships=placedShips) {
+    let x = startIdx % BOARD_SIZE;
+    let y = Math.floor(startIdx / BOARD_SIZE);
+
+    if(orient === 'horizontal') {
+      if(x + size > BOARD_SIZE) return;
+      for(let i=0; i<size; i++) {
+        const idx = y * BOARD_SIZE + x + i;
+        if(isCellOccupied(idx, ships) || hasNeighbouringShip(idx)) return false;
+      }
+    } else {
+      if(y + size > BOARD_SIZE) return false;
+      for(let i=0; i<size; i++) {
+        const idx = (y + i) * BOARD_SIZE + x;
+        if(isCellOccupied(idx, ships) || hasNeighbouringShip(idx)) return false;
+      }
+    }
+    return true;
+  }
+
+  function drawShips() {
+    playerBoard.querySelectorAll('.cell.ship').forEach(c => {
+      c.classList.remove('ship');
+      const btn = c.querySelector('.remove-ship');
+      if(btn) btn.remove();
+    });
+
+    placedShips.forEach((ship, index) => {
+      ship.positions.forEach(pos => {
+        const cell = playerBoard.querySelector(`.cell[data-index='${pos}']`);
+        if(cell) {
+          cell.classList.add('ship');
+          if(!gameStarted && !cell.querySelector('.remove-ship')) {
+            const btn = document.createElement('div');
+            btn.classList.add('remove-ship');
+            btn.textContent = '×';
+            btn.title = 'Удалить корабль';
+            btn.style.position = 'absolute';
+            btn.style.top = '2px';
+            btn.style.right = '2px';
+            btn.style.width = '22px';
+            btn.style.height = '22px';
+            btn.style.fontSize = '18px';
+            btn.style.background = '#f44';
+            btn.style.color = 'white';
+            btn.style.borderRadius = '4px';
+            btn.style.cursor = 'pointer';
+            btn.style.lineHeight = '22px';
+            btn.style.textAlign = 'center';
+            btn.style.userSelect = 'none';
+            btn.style.zIndex = '10';
+            btn.addEventListener('click', e => {
+              e.stopPropagation();
+              if(gameStarted) return;
+              placed.splice(index, 1);
+              drawShips();
+              updateCounts();
+              updateStartBtn();
+            });
+            cell.appendChild(btn);
+          }
+        }
+      });
     });
   }
 
-  placeDefaultShips();
+  function placeShip(startIdx, size, orient) {
+    if(gameStarted) return false;
+    const placedCount = placedShips.filter(s => s.size === size).length;
+    if(placedCount >= shipsConfig[size].count) {
+      alert(`Можно поставить только ${shipsConfig[size].count} корабль(ей) размера ${size}`);
+      return false;
+    }
+    if(!canPlaceShip(startIdx, size, orient)) {
+      alert('Корабль не помещается или пересекается/соприкасается с другими');
+      return false;
+    }
+    let x = startIdx % BOARD_SIZE;
+    let y = Math.floor(startIdx / BOARD_SIZE);
+    let positions = [];
+    for(let i=0; i < size; i++) {
+      positions.push(orient === 'horizontal' ? y*BOARD_SIZE + x + i : (y+i)*BOARD_SIZE + x);
+    }
+    placedShips.push({size, positions, hits: []});
+    drawShips();
+    updateCounts();
+    updateStartBtn();
+    return true;
+  }
 
-  // Пример события клика по доске соперника для выстрела
-  enemyBoard.addEventListener('click', e => {
-    if(!e.target.classList.contains('cell')) return;
-    const pos = +e.target.dataset.index;
-    if(playerShots.has(pos)) {
-      alert('Уже стреляли сюда');
+  function updateStartBtn() {
+    for(let size in shipsConfig) {
+      size = +size;
+      const placedCount = placedShips.filter(s => s.size === size).length;
+      if(placedCount < shipsConfig[size].count) {
+        info.textContent = 'Поставьте все корабли';
+        startGameBtn.disabled = true;
+        return;
+      }
+    }
+    info.textContent = 'Все корабли расставлены!';
+    startGameBtn.disabled = false;
+  }
+
+  function createEnemyShips() {
+    // Простейшая заранее заданная расстановка соперника (можно заменить на случайную)
+    enemyShips = [
+      { size: 4, positions: [0,1,2,3], hits: [] },
+      { size: 3, positions: [12,22,32], hits: [] },
+      { size: 3, positions: [44,45,46], hits: [] },
+      { size: 2, positions: [70,80], hits: [] },
+      { size: 2, positions: [90,91], hits: [] },
+      { size: 2, positions: [54,64], hits: [] },
+      { size: 1, positions: [19], hits: [] },
+      { size: 1, positions: [39], hits: [] },
+      { size: 1, positions: [59], hits: [] },
+      { size: 1, positions: [79], hits: [] }
+    ];
+  }
+
+  function drawEnemyBoard() {
+    enemyBoard.querySelectorAll('.cell').forEach(cell => {
+      cell.classList.remove('hit','miss');
+      cell.style.cursor = 'pointer';
+      // Не показываем корабли соперника, потому что в игре их не видно
+    });
+  }
+
+  function isGameOver(ships) {
+    return ships.every(ship => ship.hits.length === ship.size);
+  }
+
+  function markShot(board, idx, isHit) {
+    const cell = board.querySelector(`.cell[data-index='${idx}']`);
+    if(!cell) return;
+    if(isHit) {
+      cell.classList.add('hit');
+    } else {
+      cell.classList.add('miss');
+    }
+    cell.style.cursor = 'default';
+  }
+
+  function enemyShoot() {
+    // Простая логика выстрела противника: случайный непроверенный индекс
+    let candidates = [];
+    playerBoard.querySelectorAll('.cell').forEach(cell => {
+      if(!cell.classList.contains('hit') && !cell.classList.contains('miss')) {
+        candidates.push(+cell.dataset.index);
+      }
+    });
+    if(candidates.length === 0) return; // Нет куда стрелять
+    const shotIdx = candidates[Math.floor(Math.random() * candidates.length)];
+
+    let isHit = false;
+    for(let ship of placedShips) {
+      if(ship.positions.includes(shotIdx)) {
+        isHit = true;
+        ship.hits.push(shotIdx);
+        break;
+      }
+    }
+    markShot(playerBoard, shotIdx, isHit);
+    info.textContent = isHit ? 'Противник попал! Ваш ход.' : 'Противник промахнулся. Ваш ход.';
+    if(isGameOver(placedShips)) {
+      info.textContent = 'Противник победил!';
+      gameStarted = false;
       return;
     }
-    playerShots.add(pos);
-    if(Math.random()<0.3) { // Случайный пример попадания
-      e.target.classList.add('hit');
+    if(!isHit) currentPlayer = 'player';
+  }
+
+  enemyBoard.addEventListener('click', e => {
+    if(!gameStarted) return;
+    if(currentPlayer 'player') {
+      info.textContent = 'Сейчас ход соперника';
+      return;
+    }
+    if(!e.target.classList.contains('cell')) return;
+    const idx = +e.target.dataset.index;
+    const cell = e.target;
+    if(cell.classList.contains('hit') || cell.classList.contains('miss')) {
+      info.textContent = 'Вы уже стреляли в эту клетку.';
+      return;
+    }
+
+    // Проверяем попадание
+    let isHit = false;
+    let hitShip = null;
+    for(let ship of enemyShips) {
+      if(ship.positions.includes(idx)) {
+        isHit = true;
+        hitShip = ship;
+        ship.hits.push(idx);
+        break;
+      }
+    }
+    markShot(enemyBoard, idx, isHit);
+
+    if(isHit) {
+      info.textContent = 'Попадание! Ваш ход продолжается.';
+      if(hitShip.hits.length === hitShip.size) {
+        info.textContent = 'Корабль противника потоплен!';
+      }
+      if(isGameOver(enemyShips)) {
+        info.textContent = 'Вы выиграли!';
+        gameStarted = false;
+        return;
+      }
+      // Игрок продолжает ход
+      return;
     } else {
-      e.target.classList.add('miss');
+      info.textContent = 'Промах. Ход переходит к сопернику.';
+      currentPlayer = 'enemy';
+      setTimeout(() => {
+        enemyShoot();
+      }, 1000);
     }
   });
 
-  info.textContent = 'Это упрощённый пример. Дальше будет полноценный мультиплеер.';
+  playerBoard.addEventListener('click', e => {
+    if(!e.target.classList.contains('cell')) return;
+    const idx = +e.target.dataset.index;
+    placeShip(idx, selectedSize, orientation);
+  });
 
-  startBtn.disabled = true;
+  shipIconsContainer.addEventListener('click', e => {
+    let icon = e.target.closest('.ship-icon');
+    if(!icon || gameStarted) return;
+    shipIcons.querySelectorAll('.ship-icon').forEach(i => i.classList.remove('selected'));
+    icon.classList.add('selected');
+    selectedSize = +icon.dataset.size;
+  });
 
+  const orientationIcons = document.querySelectorAll('#orientationIcons .orient-icon');
+  orientationIcons.forEach(icon => {
+    icon.addEventListener('click', () => {
+      if(gameStarted) return;
+      orientationIcons.forEach(i => i.classList.remove('selected'));
+      icon.classList.add('selected');
+      orientation = icon.dataset.orient;
+    });
+  });
+
+  startGameBtn.addEventListener('click', () => {
+    gameStarted = true;
+    currentPlayer = 'player';
+    info.textContent = 'Игра началась! Ваш ход.';
+    startGameBtn.disabled = true;
+    playerBoard.querySelectorAll('.remove-ship').forEach(btn => btn.remove());
+    createEnemyShips();
+    drawEnemyBoard();
+  });
+
+  // Инициализация блока кораблей и счётчиков
+  function init() {
+    createShipIcons();
+    updateCounts();
+    updateStartBtn();
+  }
+
+  init();
 </script>
 
 </body>
