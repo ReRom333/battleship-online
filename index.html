@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Морской бой с ходами по очереди</title>
+<title>Морской бой - игра с ходами</title>
 <style>
   body {
     font-family: Arial, sans-serif;
@@ -44,15 +44,17 @@
     background: #559;
   }
   .cell.hit {
-    background: #f35;
+    background: #f55;
   }
   .cell.miss {
-    background: #58a;
+    background: #88a;
   }
   #info {
     text-align: center;
     margin-bottom: 15px;
     min-height: 24px;
+    font-weight: bold;
+    font-size: 18px;
   }
   #shipIconsContainer {
     display: flex;
@@ -81,6 +83,7 @@
   .ship-segment {
     height: 30px;
     border-right: 1px solid rgba(255,255,255,0.7);
+    flex: 1;
   }
   .ship-segment:last-child {
     border-right: none;
@@ -128,7 +131,7 @@
   .orient-icon.orient-vertical::after {
     content: "⇅";
   }
-  /* Кнопка удаления — теперь всегда видна и крупнее */
+  /* Кнопка удаления */
   .cell.ship .remove-ship {
     position: absolute;
     top: 2px;
@@ -142,7 +145,6 @@
     cursor: pointer;
     line-height: 22px;
     text-align: center;
-    display: block;
     user-select: none;
     z-index: 10;
   }
@@ -150,7 +152,7 @@
 </head>
 <body>
 
-<h2>Морской бой с ходами по очереди</h2>
+<h2>Морской бой - игра с ходами</h2>
 
 <div id="info">Выберите корабль, ориентацию и ставьте корабли на доске</div>
 
@@ -179,7 +181,8 @@
 <script>
   const BOARD_SIZE = 10;
   const shipsConfig = {
-    4: { count: 1    3: { count: 2 },
+    4: { count: 1 },
+    3: { count: 2 },
     2: { count: 3 },
     1: { count: 4 }
   };
@@ -201,7 +204,6 @@
     shipIconsContainer.innerHTML = '';
     for(let size in shipsConfig) {
       size = +size;
-
       const wrapper = document.createElement('div');
       wrapper.style.display = 'flex';
       wrapper.style.flexDirection = 'column';
@@ -219,7 +221,6 @@
       for(let i=0; i<size; i++) {
         const seg = document.createElement('div');
         seg.classList.add('ship-segment');
-        seg.style.flex = '1';
         icon.appendChild(seg);
       }
 
@@ -230,7 +231,6 @@
 
       wrapper.appendChild(icon);
       wrapper.appendChild(countDiv);
-
       shipIconsContainer.appendChild(wrapper);
 
       icon.addEventListener('click', () => {
@@ -275,7 +275,7 @@
     return ships.some(ship => ship.positions.includes(idx));
   }
 
-  function hasNeighbouringShip(idx) {
+  function hasNeighbouringShip(idx, ships=placedShips) {
     const x = idx % BOARD_SIZE;
     const y = Math.floor(idx / BOARD_SIZE);
     for(let dy = -1; dy <= 1; dy++) {
@@ -283,9 +283,9 @@
         if(dx === 0 && dy === 0) continue;
         const nx = x + dx;
         const ny = y + dy;
-        if(nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE) {
+        if(nx >=0 && nx < BOARD_SIZE && ny >=0 && ny < BOARD_SIZE){
           const nidx = ny * BOARD_SIZE + nx;
-          if(isCellOccupied(nidx)) return true;
+          if(isCellOccupied(nidx, ships)) return true;
         }
       }
     }
@@ -295,36 +295,34 @@
   function canPlaceShip(startIdx, size, orient, ships=placedShips) {
     let x = startIdx % BOARD_SIZE;
     let y = Math.floor(startIdx / BOARD_SIZE);
-
     if(orient === 'horizontal') {
-      if(x + size > BOARD_SIZE) return;
-      for(let i=0; i<size; i++) {
+      if(x + size > BOARD_SIZE) return false;
+      for(let i=0; i<size; i++){
         const idx = y * BOARD_SIZE + x + i;
-        if(isCellOccupied(idx, ships) || hasNeighbouringShip(idx)) return false;
+        if(isCellOccupied(idx, ships) || hasNeighbouringShip(idx, ships)) return false;
       }
     } else {
       if(y + size > BOARD_SIZE) return false;
-      for(let i=0; i<size; i++) {
+      for(let i=0; i<size; i++){
         const idx = (y + i) * BOARD_SIZE + x;
-        if(isCellOccupied(idx, ships) || hasNeighbouringShip(idx)) return false;
+        if(isCellOccupied(idx, ships) || hasNeighbouringShip(idx, ships)) return false;
       }
     }
     return true;
   }
 
   function drawShips() {
-    playerBoard.querySelectorAll('.cell.ship').forEach(c => {
-      c.classList.remove('ship');
-      const btn = c.querySelector('.remove-ship');
+    playerBoard.querySelectorAll('.cell.ship').forEach(cell => {
+      cell.classList.remove('ship');
+      const btn = cell.querySelector('.remove-ship');
       if(btn) btn.remove();
     });
-
     placedShips.forEach((ship, index) => {
       ship.positions.forEach(pos => {
         const cell = playerBoard.querySelector(`.cell[data-index='${pos}']`);
-        if(cell) {
+        if(cell){
           cell.classList.add('ship');
-          if(!gameStarted && !cell.querySelector('.remove-ship')) {
+          if(!gameStarted && !cell.querySelector('.remove-ship')){
             const btn = document.createElement('div');
             btn.classList.add('remove-ship');
             btn.textContent = '×';
@@ -343,14 +341,14 @@
             btn.style.textAlign = 'center';
             btn.style.userSelect = 'none';
             btn.style.zIndex = '10';
-            btn.addEventListener('click', e => {
+            btn.onclick = e => {
               e.stopPropagation();
               if(gameStarted) return;
-              placed.splice(index, 1);
+              placedShips.splice(index, 1);
               drawShips();
               updateCounts();
               updateStartBtn();
-            });
+            };
             cell.appendChild(btn);
           }
         }
@@ -372,7 +370,7 @@
     let x = startIdx % BOARD_SIZE;
     let y = Math.floor(startIdx / BOARD_SIZE);
     let positions = [];
-    for(let i=0; i < size; i++) {
+    for(let i=0; i<size; i++){
       positions.push(orient === 'horizontal' ? y*BOARD_SIZE + x + i : (y+i)*BOARD_SIZE + x);
     }
     placedShips.push({size, positions, hits: []});
@@ -383,10 +381,10 @@
   }
 
   function updateStartBtn() {
-    for(let size in shipsConfig) {
+    for(let size in shipsConfig){
       size = +size;
       const placedCount = placedShips.filter(s => s.size === size).length;
-      if(placedCount < shipsConfig[size].count) {
+      if(placedCount < shipsConfig[size].count){
         info.textContent = 'Поставьте все корабли';
         startGameBtn.disabled = true;
         return;
@@ -397,10 +395,9 @@
   }
 
   function createEnemyShips() {
-    // Простейшая заранее заданная расстановка соперника (можно заменить на случайную)
     enemyShips = [
       { size: 4, positions: [0,1,2,3], hits: [] },
-      { size: 3, positions: [12,22,32], hits: [] },
+      { size: 3, positions: [20,30,40], hits: [] },
       { size: 3, positions: [44,45,46], hits: [] },
       { size: 2, positions: [70,80], hits: [] },
       { size: 2, positions: [90,91], hits: [] },
@@ -412,22 +409,21 @@
     ];
   }
 
-  function drawEnemyBoard() {
+  function drawEnemyBoard(){
     enemyBoard.querySelectorAll('.cell').forEach(cell => {
-      cell.classList.remove('hit','miss');
+      cell.classList.remove('hit', 'miss');
       cell.style.cursor = 'pointer';
-      // Не показываем корабли соперника, потому что в игре их не видно
     });
   }
 
-  function isGameOver(ships) {
+  function isGameOver(ships){
     return ships.every(ship => ship.hits.length === ship.size);
   }
 
-  function markShot(board, idx, isHit) {
+  function markShot(board, idx, isHit){
     const cell = board.querySelector(`.cell[data-index='${idx}']`);
     if(!cell) return;
-    if(isHit) {
+    if(isHit){
       cell.classList.add('hit');
     } else {
       cell.classList.add('miss');
@@ -435,80 +431,78 @@
     cell.style.cursor = 'default';
   }
 
-  function enemyShoot() {
-    // Простая логика выстрела противника: случайный непроверенный индекс
+  function enemyShoot(){
+    if(!gameStarted) return;
     let candidates = [];
     playerBoard.querySelectorAll('.cell').forEach(cell => {
-      if(!cell.classList.contains('hit') && !cell.classList.contains('miss')) {
+      if(!cell.classList.contains('hit') && !cell.classList.contains('miss')){
         candidates.push(+cell.dataset.index);
       }
     });
-    if(candidates.length === 0) return; // Нет куда стрелять
+    if(candidates.length === 0) return;
     const shotIdx = candidates[Math.floor(Math.random() * candidates.length)];
 
     let isHit = false;
-    for(let ship of placedShips) {
-      if(ship.positions.includes(shotIdx)) {
+    for(let ship of placedShips){
+      if(ship.positions.includes(shotIdx)){
         isHit = true;
-        ship.hits.push(shotIdx);
+        if(!ship.hits.includes(shotIdx)) ship.hits.push(shotIdx);
         break;
       }
     }
     markShot(playerBoard, shotIdx, isHit);
-    info.textContent = isHit ? 'Противник попал! Ваш ход.' : 'Противник промахнулся. Ваш ход.';
-    if(isGameOver(placedShips)) {
+
+    if(isGameOver(placedShips)){
       info.textContent = 'Противник победил!';
       gameStarted = false;
       return;
     }
+
+    info.textContent = isHit ? 'Противник попал! Ваш ход.' : 'Противник промахнулся. Ваш ход.';
     if(!isHit) currentPlayer = 'player';
   }
 
   enemyBoard.addEventListener('click', e => {
     if(!gameStarted) return;
-    if(currentPlayer 'player') {
+    if(currentPlayer !== 'player'){
       info.textContent = 'Сейчас ход соперника';
       return;
     }
     if(!e.target.classList.contains('cell')) return;
     const idx = +e.target.dataset.index;
     const cell = e.target;
-    if(cell.classList.contains('hit') || cell.classList.contains('miss')) {
+    if(cell.classList.contains('hit') || cell.classList.contains('miss')){
       info.textContent = 'Вы уже стреляли в эту клетку.';
       return;
     }
 
-    // Проверяем попадание
     let isHit = false;
     let hitShip = null;
-    for(let ship of enemyShips) {
-      if(ship.positions.includes(idx)) {
+    for(let ship of enemyShips){
+      if(ship.positions.includes(idx)){
         isHit = true;
         hitShip = ship;
-        ship.hits.push(idx);
+        if(!ship.hits.includes(idx)) ship.hits.push(idx);
         break;
       }
     }
     markShot(enemyBoard, idx, isHit);
 
-    if(isHit) {
+    if(isHit){
       info.textContent = 'Попадание! Ваш ход продолжается.';
-      if(hitShip.hits.length === hitShip.size) {
+      if(hitShip.hits.length === hitShip.size){
         info.textContent = 'Корабль противника потоплен!';
       }
-      if(isGameOver(enemyShips)) {
+      if(isGameOver(enemyShips)){
         info.textContent = 'Вы выиграли!';
         gameStarted = false;
         return;
       }
-      // Игрок продолжает ход
-      return;
+      return; // игрок продолжает ход
     } else {
       info.textContent = 'Промах. Ход переходит к сопернику.';
       currentPlayer = 'enemy';
-      setTimeout(() => {
-        enemyShoot();
-      }, 1000);
+      setTimeout(enemyShoot, 1000);
     }
   });
 
@@ -521,16 +515,15 @@
   shipIconsContainer.addEventListener('click', e => {
     let icon = e.target.closest('.ship-icon');
     if(!icon || gameStarted) return;
-    shipIcons.querySelectorAll('.ship-icon').forEach(i => i.classList.remove('selected'));
+    shipIconsContainer.querySelectorAll('.ship-icon').forEach(i => i.classList.remove('selected'));
     icon.classList.add('selected');
     selectedSize = +icon.dataset.size;
   });
 
-  const orientationIcons = document.querySelectorAll('#orientationIcons .orient-icon');
-  orientationIcons.forEach(icon => {
+  document.querySelectorAll('#orientationIcons .orient-icon').forEach(icon => {
     icon.addEventListener('click', () => {
       if(gameStarted) return;
-      orientationIcons.forEach(i => i.classList.remove('selected'));
+      document.querySelectorAll('#orientationIcons .orient-icon').forEach(i => i.classList.remove('selected'));
       icon.classList.add('selected');
       orientation = icon.dataset.orient;
     });
@@ -546,8 +539,7 @@
     drawEnemyBoard();
   });
 
-  // Инициализация блока кораблей и счётчиков
-  function init() {
+  function init(){
     createShipIcons();
     updateCounts();
     updateStartBtn();
