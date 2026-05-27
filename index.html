@@ -39,11 +39,11 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
   import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
 
-  // Конфигурация Firebase — замени на свою из консоли
+  // Обновленная конфигурация с правильным databaseURL для Европы
   const firebaseConfig = {
     apiKey: "AIzaSyATPvyALFcJHnPeiIAt6sDyeFi4nwmnNOU",
     authDomain: "bsrs-1.firebaseapp.com",
-    databaseURL: "https://bsrs-1-default-rtdb.firebaseio.com",
+    databaseURL: "https://bsrs-1-default-rtdb.europe-west1.firebasedatabase.app",
     projectId: "bsrs-1",
     storageBucket: "bsrs-1.firebasestorage.app",
     messagingSenderId: "56393365787",
@@ -70,7 +70,6 @@
   let isMyTurn = false;
   let gameStarted = false;
 
-  // Получаем ID комнаты из адресной строки или создаём новый хеш
   let roomId = location.hash.slice(1);
   if (!roomId) {
     roomId = Math.random().toString(36).substr(2, 6);
@@ -79,14 +78,12 @@
 
   const roomRef = ref(database, 'rooms/' + roomId);
 
-  // Генерируем уникальный ID игрока и сохраняем
   let playerId = localStorage.getItem('battleship_playerId');
   if (!playerId) {
     playerId = Math.random().toString(36).substr(2, 9);
     localStorage.setItem('battleship_playerId', playerId);
   }
 
-  // Функция создания доски
   function createBoard(boardElement, clickHandler) {
     boardElement.innerHTML = '';
     for(let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
@@ -101,7 +98,6 @@
   createBoard(playerBoard, onPlayerBoardClick);
   createBoard(enemyBoard, onEnemyBoardClick);
 
-  // Помощник для установки или удаления класса
   function setCellClass(boardElement, index, className, add = true) {
     const cell = boardElement.querySelector(`.cell[data-index='${index}']`);
     if (!cell) return;
@@ -112,13 +108,11 @@
   let playersInRoom = [];
   let playerNumber = null;
 
-  // Обновление отладочной информации и кнопки
   function updateDebug() {
     debug.textContent = `Комната: ${roomId} | Корабли: ${playerShips.size} | Игроки в комнате: ${playersInRoom.length} | Кнопка активна: ${!startGameBtn.disabled}`;
     startGameBtn.disabled = (playerShips.size !== SHIP_COUNT || playersInRoom.length !== 2);
   }
 
-  // Подключение к комнате и слушатель игроков
   function joinRoom() {
     onValue(ref(database, 'rooms/' + roomId + '/players'), (snapshot) => {
       let players = snapshot.val() || [];
@@ -141,7 +135,6 @@
     });
   }
 
-  // Загрузка состояния игры из Firebase
   function loadGameState() {
     onValue(ref(database, 'rooms/' + roomId + '/gameState'), (snapshot) => {
       const state = snapshot.val();
@@ -173,13 +166,11 @@
     });
   }
 
-  // Отрисовка кораблей
   function drawShips(board, shipsSet) {
     board.querySelectorAll('.cell.ship').forEach(c => c.classList.remove('ship'));
     shipsSet.forEach(i => setCellClass(board, i, 'ship'));
   }
 
-  // Отрисовка попаданий и промахов
   function drawShots(board, shotsSet) {
     board.querySelectorAll('.cell.hit, .cell.miss').forEach(c => {
       c.classList.remove('hit');
@@ -194,10 +185,8 @@
     });
   }
 
-  // Клик на свою доску — расстановка кораблей
   function onPlayerBoardClick(e) {
     if (gameStarted) return;
-
     const idx = +e.target.dataset.index;
     if (playerShips.has(idx)) {
       playerShips.delete(idx);
@@ -214,10 +203,8 @@
     updateDebug();
   }
 
-  // Клик по доске соперника — выстрелы
   function onEnemyBoardClick(e) {
     if (!gameStarted || !isMyTurn) return;
-
     const idx = +e.target.dataset.index;
     if (playerShots.has(idx)) {
       alert('Вы уже стреляли в эту клетку');
@@ -229,7 +216,6 @@
     updateTurnInfo();
   }
 
-  // Кнопка начать игру
   startGameBtn.addEventListener('click', () => {
     if (playerShips.size !== SHIP_COUNT) {
       alert(`Нужно разместить ровно ${SHIP_COUNT} кораблей.`);
@@ -242,16 +228,13 @@
     startGameBtn.disabled = true;
   });
 
-  // Обновление информации о ходе
   function updateTurnInfo() {
     info.textContent = gameStarted ? (isMyTurn ? 'Ваш ход' : 'Ход соперника') : info.textContent;
   }
 
-  // Обновление состояния игры в Firebase
   function updateGameState() {
     const gameStateRef = ref(database, 'rooms/' + roomId + '/gameState');
 
-    // Получаем текущее состояние и обновляем
     onValue(gameStateRef, (snapshot) => {
       let gameState = snapshot.val() || {
         playerShips: {},
