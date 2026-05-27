@@ -37,7 +37,7 @@
 </head>
 <body>
 
-<h2>Морской бой с Firebase (Github Pages)</h2>
+<h2>Морской бой с Firebase</h2>
 
 <div id="roomControls">
   <input id="roomIdInput" placeholder="ID комнаты (4 цифры)" maxlength="4" />
@@ -96,6 +96,9 @@
   let enemyShips = [];
   let orientation = "horizontal";
   let selectedSize = 4;
+
+  let playerMoves = [];
+  let enemyMoves = [];
 
   const playerBoard = document.getElementById("playerBoard");
   const enemyBoard = document.getElementById("enemyBoard");
@@ -287,7 +290,10 @@
     startGameBtn.disabled = false;
   }
 
-  // Firebase game functions
+  // Логика игры с Firebase
+
+  let playerMoves = [];
+  let enemyMoves = [];
 
   function saveShipsToDB(){
     if(!roomId || !playerNumber) return;
@@ -302,66 +308,91 @@
 
   function listenRoom() {
     if(!roomId) return;
-    db.ref(roomId).on("value", snapshot => {
+    db.ref(roomId).on('value', snapshot => {
       const data = snapshot.val();
       if(!data) return;
-      if(data.ready1 && data.ready2 && !gameStarted){
+
+      if(data.ready1 && data.ready2 && !gameStarted) {
         gameStarted = true;
         currentPlayer = data.currentPlayer;
-        const enemyShipsData = playerNumber === 1 ? data.player2Ships : data.player1Ships;
-        if(enemyShipsData){
-          enemyShips = enemyShipsData.map(arr=>({positions:arr, size:arr.length, hits:[]}));
-          drawEnemyBoard();
-        }
+
+        const enemyData = playerNumber === 1 ? data.player2Ships : data.player1Ships;
+        if(enemyData) enemyShips = enemyData.map(arr => ({positions: arr, size: arr.length, hits: []}));
+
+        playerMoves = data.moves ? data.moves.filter(m => m.player === playerNumber) : [];
+        enemyMoves = data.moves ? data.moves.filter(m => m.player !== playerNumber) : [];
+
         drawShips();
+        drawEnemyBoard();
+
+        updatePlayerBoard();  // Наши попадания/промахи от соперника по нашей доске
+        updateEnemyBoard();   // Наши выстрелы по доске соперника
+
         playerBoard.querySelectorAll(".remove-ship").forEach(el => el.remove());
         info.textContent = currentPlayer === playerNumber ? "Ваш ход!" : "Ждите ход соперника...";
         startGameBtn.disabled = true;
       }
-      if(data.moves && data.moves.length > 0){
-        const lastMove = data.moves[data.moves.length - 1];
-        if(lastMove.player !== playerNumber){
-          applyMove(lastMove);
-          currentPlayer = data.currentPlayer;
-          info.textContent = currentPlayer === playerNumber ? "Ваш ход!" : "Ждите ход соперника...";
+
+      if(data.moves && data.moves.length > 0) {
+        playerMoves = data.moves.filter(m => m.player === playerNumber);
+        enemyMoves = data.moves.filter(m => m.player !== playerNumber);
+
+        updatePlayerBoard();
+        updateEnemyBoard();
+
+        currentPlayer = data.currentPlayer;
+        info.textContent = currentPlayer === playerNumber ? "Ваш ход!" : "Ждите ход соперника...";
+      }
+    });
+  }
+
+  function updatePlayerBoard() {
+    playerBoard.querySelectorAll(".cell").forEach(cell => {
+      cell.classList.remove("hit", "miss");
+      const idx = +cell.dataset.index;
+
+      let hit = false;
+      let miss = false;
+      if(enemyMoves) {
+        const shot = enemyMoves.find(m => m.position === idx);
+        if(shot) {
+          if(isCellOccupied(idx, placedShips)) hit = true;
+          else miss = true;
         }
       }
+      if(hit) cell.classList.add("hit");
+      else if(miss) cell.classList.add("miss");
+    });
+  }
+
+  function updateEnemyBoard() {
+    enemyBoard.querySelectorAll(".cell").forEach(cell => {
+      cell.classList.remove("hit", "miss");
+      const idx = +cell.dataset.index;
+      let hit = false;
+      let miss = false;
+      if(playerMoves) {
+        const shot = playerMoves.find(m => m.position === idx);
+        if(shot) {
+          if(isCellOccupied(idx, enemyShips)) hit = true;
+          else miss = true;
+        }
+      }
+      if(hit) cell.classList.add("hit");
+      else if(miss) cell.classList.add("miss");
+    });
+  }
+
+  function drawEnemyBoard(){
+    enemyBoard.querySelectorAll(".cell").forEach(c => {
+      c.classList.remove("hit", "miss", "sunk");
+      c.style.cursor = "pointer";
+      c.style.boxShadow = "";
     });
   }
 
   function applyMove(move){
-    const board = (move.player === 1) ? enemyBoard : playerBoard;
-    const ships = (move.player === 1) ? enemyShips : placedShips;
-    const cell = board.querySelector(`.cell[data-index="${move.position}"]`);
-    if(!cell) return;
-    let hit = false;
-    ships.forEach(ship => {
-      if(ship.positions.includes(move.position)){
-        hit = true;
-        if(!ship.hits.includes(move.position)) ship.hits.push(move.position);
-      }
-    });
-    markShot(board, move.position, hit);
-    markSunkShips(board, ships);
-  }
-
-  function markShot(board, index, isHit){
-    const cell = board.querySelector(`.cell[data-index="${index}"]`);
-    if(cell){
-      cell.classList.add(isHit ? "hit" : "miss");
-      cell.style.cursor = "default";
-    }
-  }
-
-  function markSunkShips(board, ships){
-    ships.forEach(ship => {
-      if(ship.hits.length === ship.size){
-        ship.positions.forEach(pos => {
-          const c = board.querySelector(`.cell[data-index="${pos}"]`);
-          if(c) c.classList.add("sunk");
-        });
-      }
-    });
+    // не нужна теперь, т.к. обновление делается через updatePlayerBoard & updateEnemyBoard
   }
 
   async function makeMove(position){
@@ -382,15 +413,7 @@
     }
   }
 
-  function drawEnemyBoard(){
-    enemyBoard.querySelectorAll(".cell").forEach(c => {
-      c.classList.remove("hit","miss","sunk");
-      c.style.cursor = "pointer";
-      c.style.boxShadow = "";
-    });
-  }
-
-  // Event Listeners
+  // Слушатели UI
 
   playerBoard.addEventListener("click", e => {
     if(!e.target.classList.contains("cell")) return;
@@ -433,8 +456,8 @@
 
   joinRoomBtn.addEventListener("click", () => {
     const id = roomIdInput.value.trim();
-    if(!id){
-      alert("Введите ID комнаты");
+    if(!id || id.length !== 4 ){
+      alert("Введите корректный ID комнаты из 4 цифр");
       return;
     }
     db.ref(id).once("value").then(snapshot => {
@@ -472,11 +495,7 @@
     });
   });
 
-  function generateRoomId() {
-    return Math.floor(1000 + Math.random() * 9000).toString();
-  }
-
-  // Initialize
+  // Инициализация
 
   createShipIcons();
   updateCounts();
