@@ -168,7 +168,7 @@
 
   // Отрисовка кораблей
   function drawShips(board, shipsSet) {
-    board.querySelectorAll('.cell.ship').forEach(c c.classList.remove('ship'));
+    board.querySelectorAll('.cell.ship').forEach(c => c.classList.remove('ship'));
     shipsSet.forEach(i => setCellClass(board, i, 'ship'));
   }
 
