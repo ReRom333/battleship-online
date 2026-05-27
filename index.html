@@ -20,7 +20,7 @@
   .cell.hit { background:#f55; }
   .cell.miss { background:#88a; }
   .cell.sunk { box-shadow: inset 0 0 10px 3px #f00; }
-  .remove-ship { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; font-size: 18px; background: #f44; color: white; border-radius: 4px; cursor: pointer; line-height: 22px; text-align: center; user-select: none; z-index: 10; }
+  .remove-ship { position: absolute; top: 2px; right: 2px; width: 22px;: 22px; font-size: 18px; background: #f44; color: white; border-radius: 4px; cursor: pointer; line-height: 22px; text-align: center; user-select: none; z-index: 10; }
   #shipIconsContainer { display:flex; justify-content:center; gap:20px; margin-bottom:15px; }
   .ship-icon { cursor:pointer; border: 2px solid transparent; user-select:none; display:flex; justify-content:center; align-items:center; background:#559; color:white; font-weight:bold; border-radius:6px; position:relative; height:30px; }
   .ship-icon.selected { border-color:#33a; box-shadow:0 0 8px #33a; }
@@ -86,8 +86,8 @@
   const db = firebase.database();
 
   const BOARD_SIZE = 10;
-  const shipsConfig = {4:1,3:2,2:3,1:4};
-  
+  const shipsConfig = {4:1, 3:2, 2:3, 1:4};
+
   let roomId = null;
   let playerNumber = null; // 1 или 2
   let currentPlayer = null;
@@ -108,7 +108,7 @@
   const shipIconsContainer = document.getElementById("shipIconsContainer");
 
   function createShipIcons(){
-   IconsContainer.innerHTML = "";
+    shipIconsContainer.innerHTML = "";
     for(let size in shipsConfig){
       size = +size;
       const wrapper = document.createElement("div");
@@ -181,7 +181,7 @@
         const ny = y + dy;
         if(nx>=0 && nx < BOARD_SIZE && ny >=0 && ny < BOARD_SIZE){
           if(isCellOccupied(ny*BOARD_SIZE + nx, ships)) return true;
- }
+        }
       }
     }
     return false;
@@ -233,7 +233,7 @@
             btn.style.userSelect = "none";
             btn.style.zIndex = "10";
             btn.onclick = e => {
-              e.stop();
+              e.stopPropagation();
               if(gameStarted) return;
               placedShips.splice(index, 1);
               drawShips();
@@ -283,8 +283,8 @@
     startGameBtn.disabled = false;
   }
 
-  // Game functions and Firebase integration
-  
+  // Firebase game functions
+
   function saveShipsToDB(){
     if(!roomId || !playerNumber) return;
     const shipsKey = playerNumber === 1 ? "player1Ships" : "player2Ships";
@@ -296,7 +296,7 @@
     });
   }
 
-  function listenRoom(){
+  function listenRoom() {
     if(!roomId) return;
     db.ref(roomId).on("value", snapshot => {
       const data = snapshot.val();
@@ -306,7 +306,7 @@
         currentPlayer = data.currentPlayer;
         const enemyShipsData = playerNumber === 1 ? data.player2Ships : data.player1Ships;
         if(enemyShipsData){
-          enemyShips = enemyShipsData.map(arr => ({positions:arr, size: arr.length, hits: []}));
+          enemyShips = enemyShipsData.map(arr=>({positions:arr, size:arr.length, hits:[]}));
           drawEnemyBoard();
         }
         drawShips();
@@ -315,7 +315,7 @@
         startGameBtn.disabled = true;
       }
       if(data.moves && data.moves.length > 0){
-        const lastMove = data.moves[data.moves.length-1];
+        const lastMove = data.moves[data.moves.length - 1];
         if(lastMove.player !== playerNumber){
           applyMove(lastMove);
           currentPlayer = data.currentPlayer;
@@ -344,7 +344,7 @@
   function markShot(board, index, isHit){
     const cell = board.querySelector(`.cell[data-index="${index}"]`);
     if(cell){
-      cell.classList.add(isHit ? "hit" "miss");
+      cell.classList.add(isHit ? "hit" : "miss");
       cell.style.cursor = "default";
     }
   }
@@ -372,7 +372,7 @@
         currentPlayer: playerNumber === 1 ? 2 : 1
       });
       return true;
-    } catch (e) {
+    } catch(e){
       console.error(e);
       return false;
     }
@@ -387,6 +387,7 @@
   }
 
   // Event Listeners
+
   playerBoard.addEventListener("click", e => {
     if(!e.target.classList.contains("cell")) return;
     placeShip(+e.target.dataset.index, selectedSize, orientation);
@@ -432,7 +433,7 @@
       alert("Введите ID комнаты");
       return;
     }
-    db.ref(id).once("valuethen(snapshot => {
+    db.ref(id).once("value").then(snapshot => {
       if(!snapshot.exists()){
         alert("Комната не найдена");
         return;
@@ -458,7 +459,6 @@
     info.textContent = "Ждем соперника...";
   });
 
-  // Orientation selector
   document.querySelectorAll("#orientationIcons .orient-icon").forEach(icon => {
     icon.addEventListener("click", () => {
       if(gameStarted) return;
@@ -468,10 +468,12 @@
     });
   });
 
-  // Initialization
+  // Initialize on load
+
   createShipIcons();
   updateCounts();
   updateStartBtn();
+
 </script>
 
 </body>
