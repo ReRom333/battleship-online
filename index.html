@@ -20,7 +20,7 @@
   .cell.hit { background:#f55; }
   .cell.miss { background:#88a; }
   .cell.sunk { box-shadow: inset 0 0 10px 3px #f00; }
-  .remove-ship { position: absolute; top: 2px; right: 2px; width: 22px;: 22px; font-size: 18px; background: #f44; color: white; border-radius: 4px; cursor: pointer; line-height: 22px; text-align: center; user-select: none; z-index: 10; }
+  .remove-ship { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; font-size: 18px; background: #f44; color: white; border-radius: 4px; cursor: pointer; line-height: 22px; text-align: center; user-select: none; z-index: 10; }
   #shipIconsContainer { display:flex; justify-content:center; gap:20px; margin-bottom:15px; }
   .ship-icon { cursor:pointer; border: 2px solid transparent; user-select:none; display:flex; justify-content:center; align-items:center; background:#559; color:white; font-weight:bold; border-radius:6px; position:relative; height:30px; }
   .ship-icon.selected { border-color:#33a; box-shadow:0 0 8px #33a; }
@@ -40,7 +40,7 @@
 <h2>Морской бой с Firebase (Github Pages)</h2>
 
 <div id="roomControls">
-  <input id="roomIdInput" placeholder="ID комнаты (например, room-abc123)" />
+  <input id="roomIdInput" placeholder="ID комнаты (4 цифры)" maxlength="4" />
   <button id="createRoomBtn">Создать комнату</button>
   <button id="joinRoomBtn">Присоединиться</button>
   <div id="roomStatus"></div>
@@ -75,7 +75,7 @@
   const firebaseConfig = {
     apiKey: "AIzaSyATPvyALFcJHnPeiIAt6sDyeFi4nwmnNOU",
     authDomain: "bsrs-1.firebaseapp.com",
-    databaseURL: "https://bsrs-1-default-rtdb.firebaseio.com",
+    databaseURL: "https://bsrs-1-default-rtdb.europe-west1.firebasedatabase.app",
     projectId: "bsrs-1",
     storageBucket: "bsrs-1.appspot.com",
     messagingSenderId: "56393365787",
@@ -106,6 +106,10 @@
   const joinRoomBtn = document.getElementById("joinRoomBtn");
   const startGameBtn = document.getElementById("startGameBtn");
   const shipIconsContainer = document.getElementById("shipIconsContainer");
+
+  function generateRoomId(){
+    return Math.floor(1000 + Math.random()*9000).toString(); // 4 цифры от 1000 до 9999
+  }
 
   function createShipIcons(){
     shipIconsContainer.innerHTML = "";
@@ -410,7 +414,7 @@
   });
 
   createRoomBtn.addEventListener("click", () => {
-    roomId = "room-" + Math.random().toString(36).substring(2,8);
+    roomId = generateRoomId();
     roomIdInput.value = roomId;
     playerNumber = 1;
     db.ref(roomId).set({
@@ -468,12 +472,15 @@
     });
   });
 
-  // Initialize on load
+  function generateRoomId() {
+    return Math.floor(1000 + Math.random() * 9000).toString();
+  }
+
+  // Initialize
 
   createShipIcons();
   updateCounts();
   updateStartBtn();
-
 </script>
 
 </body>
